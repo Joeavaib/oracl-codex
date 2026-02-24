@@ -35,7 +35,11 @@ class RunnerConfig:
     checks: list[CommandCheck] = field(default_factory=list)
     agents: dict[str, AgentConfig] = field(default_factory=dict)
     allow_renames: bool = False
+
+    parallel_decompose: bool = False  # reserved; current runtime is strictly sequential
+
     parallel_decompose: bool = False
+
     validator_input_cap: int = 24000
 
     @classmethod
@@ -61,9 +65,17 @@ class RunnerConfig:
             checks=checks,
             agents=agents,
             allow_renames=bool(raw.get("allow_renames", False)),
+
+            parallel_decompose=False,
+            validator_input_cap=int(raw.get("validator_input_cap", 24000)),
+        )
+        if bool(raw.get("parallel_decompose", False)):
+            raise ValueError("parallel_decompose is not supported in this build; execution is sequential only")
+
             parallel_decompose=bool(raw.get("parallel_decompose", False)),
             validator_input_cap=int(raw.get("validator_input_cap", 24000)),
         )
+
         if cfg.execution_mode not in {"sandboxed", "unsafe-local"}:
             raise ValueError("execution_mode must be sandboxed or unsafe-local")
         return cfg
