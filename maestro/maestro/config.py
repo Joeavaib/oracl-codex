@@ -27,6 +27,7 @@ class AgentConfig:
 @dataclass
 class RunnerConfig:
     ollama_host: str = "http://127.0.0.1:11434"
+    ollama_timeout_s: int = 300
     validator_model: str = ""
     max_retries: int = 2
     abs_max_turns: int = 6
@@ -45,6 +46,10 @@ class RunnerConfig:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "RunnerConfig":
+        ollama_timeout_s = int(raw.get("ollama_timeout_s", 300))
+        if ollama_timeout_s <= 0:
+            raise ValueError("ollama_timeout_s must be > 0")
+
         checks = [CommandCheck(**item) for item in raw.get("checks", [])]
         agents: dict[str, AgentConfig] = {}
         for code, cfg in raw.get("agents", {}).items():
@@ -53,6 +58,7 @@ class RunnerConfig:
             agents[code] = AgentConfig(**cfg)
         cfg = cls(
             ollama_host=raw.get("ollama_host", "http://127.0.0.1:11434"),
+            ollama_timeout_s=ollama_timeout_s,
             validator_model=raw["validator_model"],
             max_retries=max(0, min(9, int(raw.get("max_retries", 2)))),
             abs_max_turns=int(raw.get("abs_max_turns", 6)),
