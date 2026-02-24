@@ -10,6 +10,7 @@ maestro run --repo PATH --request FILE_OR_STRING --cfg CFG.json [--sandboxed|--u
 
 Outputs are written to `.maestro/runs/{sid}/{runid}` and worktrees/copies under `.maestro/work/{sid}/{runid}/repo`.
 
+
 ## Config
 
 Example `CFG.json`:
@@ -49,3 +50,13 @@ Example `CFG.json`:
 - `allow_renames`: Allow file rename operations in patch application.
 - `parallel_decompose`: Enable parallel decomposition mode.
 - `validator_input_cap`: Input size cap for validator prompts.
+
+
+
+## Execution model
+
+Maestro executes specialist/validator calls **sequentially (one after another)**.
+No concurrent specialist fan-out is performed in this build.
+
+
+
