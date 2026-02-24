@@ -41,7 +41,7 @@ class Orchestrator:
 
         agent = route_initial_agent(request_text)
         specialist_prompt = request_text + "\nOutput unified diff or FILE blocks only."
-        specialist_output = self._call_agent(agent, specialist_prompt)
+        specialist_output = self._call_specialist(agent, specialist_prompt)
 
         while True:
             tdir = logger.turn_dir(turn)
@@ -114,7 +114,21 @@ class Orchestrator:
             budget -= 1
             turn += 1
             abs_remaining -= 1
-            specialist_output = self._call_agent(agent, specialist_prompt)
+            specialist_output = self._call_specialist(agent, specialist_prompt)
+
+
+    def _call_specialist(self, agent: str, prompt: str) -> str:
+        output = self._call_agent(agent, prompt)
+        for _ in range(2):
+            if parse_artifact(output).kind != "invalid":
+                return output
+            output = self._call_agent(
+                agent,
+                prompt
+                + "\n\n[FORMAT_ERROR] Return ONLY one unified diff (starting with 'diff --git') "
+                + "or FILE blocks (starting with 'FILE: '). No prose, no markdown fences.",
+            )
+        return output
 
     def _call_agent(self, agent: str, prompt: str) -> str:
         cfg = self.cfg.agents.get(agent)
