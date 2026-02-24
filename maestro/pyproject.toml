@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maestro"
+version = "0.1.0"
+description = "TMP-S v2.4 coding orchestra on Ollama"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+maestro = "maestro.cli:main"
+
+[tool.setuptools]
+packages = ["maestro", "maestro.llm", "maestro.tmps", "maestro.orch"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
