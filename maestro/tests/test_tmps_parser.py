@@ -1,3 +1,5 @@
+import pytest
+
 from maestro.tmps.parser import ParseError, parse_tmps, split_with_escape
 
 
@@ -19,7 +21,7 @@ def test_parse_canonical():
     assert rec.c.decision == "A"
 
 
-def test_parse_legacy_without_v_defaults():
+def test_tmps_requires_v_line():
     raw = "\n".join([
         "A 1111|8888|W|ok",
         "B 1:imp|do one",
@@ -27,8 +29,8 @@ def test_parse_legacy_without_v_defaults():
         "B 3:doc|do three",
         "C R|1|1|*",
     ])
-    rec = parse_tmps(raw)
-    assert rec.v.sid == "anon"
+    with pytest.raises(ParseError, match="missing V"):
+        parse_tmps(raw)
 
 
 def test_enforces_b_count():
@@ -38,9 +40,42 @@ def test_enforces_b_count():
         "B 1:imp|do one",
         "C A|1|2|*",
     ])
-    try:
+    with pytest.raises(ParseError):
         parse_tmps(raw)
-    except ParseError:
-        assert True
-    else:
-        assert False
+
+
+def test_rejects_unescaped_pipe_in_b_action():
+    raw = "\n".join([
+        "V 2.4|sid|run|1",
+        "A 1111|9999|P|good",
+        "B 1:imp|do|one",
+        "B 2:tst|do two",
+        "B 3:doc|do three",
+        "C A|1|2|*",
+    ])
+    with pytest.raises(ParseError, match="B action"):
+        parse_tmps(raw)
+
+
+def test_rejects_invalid_agent_code_and_priority_range():
+    bad_agent = "\n".join([
+        "V 2.4|sid|run|1",
+        "A 1111|9999|P|good",
+        "B 1:IMPL|do one",
+        "B 2:tst|do two",
+        "B 3:doc|do three",
+        "C A|1|2|*",
+    ])
+    with pytest.raises(ParseError, match="B agent"):
+        parse_tmps(bad_agent)
+
+    bad_pri = "\n".join([
+        "V 2.4|sid|run|1",
+        "A 1111|9999|P|good",
+        "B 8:imp|do one",
+        "B 2:tst|do two",
+        "B 3:doc|do three",
+        "C A|1|2|*",
+    ])
+    with pytest.raises(ParseError, match="B pri range"):
+        parse_tmps(bad_pri)
