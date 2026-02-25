@@ -1,3 +1,5 @@
+import pytest
+
 from maestro.tmps.parser import ParseError, parse_tmps, split_with_escape
 
 
@@ -19,7 +21,7 @@ def test_parse_canonical():
     assert rec.c.decision == "A"
 
 
-def test_parse_legacy_without_v_defaults():
+def test_tmps_requires_v_line():
     raw = "\n".join([
         "A 1111|8888|W|ok",
         "B 1:imp|do one",
@@ -27,8 +29,8 @@ def test_parse_legacy_without_v_defaults():
         "B 3:doc|do three",
         "C R|1|1|*",
     ])
-    rec = parse_tmps(raw)
-    assert rec.v.sid == "anon"
+    with pytest.raises(ParseError, match="missing V"):
+        parse_tmps(raw)
 
 
 def test_enforces_b_count():
@@ -38,9 +40,5 @@ def test_enforces_b_count():
         "B 1:imp|do one",
         "C A|1|2|*",
     ])
-    try:
+    with pytest.raises(ParseError):
         parse_tmps(raw)
-    except ParseError:
-        assert True
-    else:
-        assert False
