@@ -10,6 +10,9 @@ maestro run --repo PATH --request FILE_OR_STRING --cfg CFG.json [--sandboxed|--u
 
 Outputs are written to `.maestro/runs/{sid}/{runid}` and worktrees/copies under `.maestro/work/{sid}/{runid}/repo`.
 
+
+
+
 ## Config
 
 Example `CFG.json`:
@@ -51,8 +54,19 @@ Example `CFG.json`:
 - `validator_input_cap`: Input size cap for validator prompts.
 
 
+
 ## Validator finetuning
 
 A ready-to-run starter pipeline for Qwen2.5-3B + QLoRA is available under `finetune/`.
 
 See `finetune/README.md` for extraction, synthetic data generation, filtering/splitting, and training config steps.
+
+
+## Execution model
+
+Maestro executes specialist/validator calls **sequentially (one after another)**.
+No concurrent specialist fan-out is performed in this build.
+
+
+
+
