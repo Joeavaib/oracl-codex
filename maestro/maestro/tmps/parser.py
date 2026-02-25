@@ -40,14 +40,14 @@ def parse_tmps(raw: str) -> TMPSRecord:
     if not lines:
         raise ParseError("empty")
 
-    if lines[0].startswith("V "):
-        vparts = split_with_escape(lines[0][2:])
-        if len(vparts) != 4:
-            raise ParseError("invalid V")
-        v = VLine(vparts[0], vparts[1], vparts[2], int(vparts[3]))
-        i = 1
-    else:
-        v = VLine("2.4", "anon", "anon", 0)
+    if not lines[0].startswith("V "):
+        raise ParseError("missing V")
+
+    vparts = split_with_escape(lines[0][2:])
+    if len(vparts) != 4:
+        raise ParseError("invalid V")
+    v = VLine(vparts[0], vparts[1], vparts[2], int(vparts[3]))
+    i = 1
 
     if i >= len(lines) or not lines[i].startswith("A "):
         raise ParseError("missing A")

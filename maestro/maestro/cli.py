@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from maestro.config import RunnerConfig
-from maestro.llm.ollama_client import OllamaClient
+from maestro.llm import build_specialist_client, build_validator_client
 from maestro.orch.orchestrator import Orchestrator
 
 
@@ -30,7 +30,11 @@ def main() -> None:
         req_path = Path(req_arg)
         request_text = req_path.read_text() if req_path.exists() else req_arg
 
-        orch = Orchestrator(cfg, OllamaClient(cfg.ollama_host, timeout_s=cfg.ollama_timeout_s))
+        orch = Orchestrator(
+            cfg,
+            llm_client=build_specialist_client(cfg),
+            validator_client=build_validator_client(cfg),
+        )
         result = orch.run(Path(args.repo), request_text)
         print(result)
 

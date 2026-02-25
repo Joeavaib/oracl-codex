@@ -28,3 +28,8 @@ def test_parallel_decompose_rejected():
             }
         )
 
+
+
+def test_validator_backend_must_be_known():
+    with pytest.raises(ValueError, match="validator_backend must be ollama or hf"):
+        RunnerConfig.from_dict({"validator_model": "val", "validator_backend": "other"})
