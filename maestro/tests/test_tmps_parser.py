@@ -41,4 +41,45 @@ def test_enforces_b_count():
         "C A|1|2|*",
     ])
     with pytest.raises(ParseError):
+
         parse_tmps(raw)
+
+
+def test_rejects_unescaped_pipe_in_b_action():
+    raw = "\n".join([
+        "V 2.4|sid|run|1",
+        "A 1111|9999|P|good",
+        "B 1:imp|do|one",
+        "B 2:tst|do two",
+        "B 3:doc|do three",
+        "C A|1|2|*",
+    ])
+    with pytest.raises(ParseError, match="B action"):
+        parse_tmps(raw)
+
+
+def test_rejects_invalid_agent_code_and_priority_range():
+    bad_agent = "\n".join([
+        "V 2.4|sid|run|1",
+        "A 1111|9999|P|good",
+        "B 1:IMPL|do one",
+        "B 2:tst|do two",
+        "B 3:doc|do three",
+        "C A|1|2|*",
+    ])
+    with pytest.raises(ParseError, match="B agent"):
+        parse_tmps(bad_agent)
+
+    bad_pri = "\n".join([
+        "V 2.4|sid|run|1",
+        "A 1111|9999|P|good",
+        "B 8:imp|do one",
+        "B 2:tst|do two",
+        "B 3:doc|do three",
+        "C A|1|2|*",
+    ])
+    with pytest.raises(ParseError, match="B pri range"):
+        parse_tmps(bad_pri)
+
+        parse_tmps(raw)
+
