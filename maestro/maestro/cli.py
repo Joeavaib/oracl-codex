@@ -30,7 +30,7 @@ def main() -> None:
         req_path = Path(req_arg)
         request_text = req_path.read_text() if req_path.exists() else req_arg
 
-        orch = Orchestrator(cfg, OllamaClient(cfg.ollama_host))
+        orch = Orchestrator(cfg, OllamaClient(cfg.ollama_host, timeout_s=cfg.ollama_timeout_s))
         result = orch.run(Path(args.repo), request_text)
         print(result)
 
