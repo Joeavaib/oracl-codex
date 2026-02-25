@@ -17,6 +17,7 @@ def test_runner_config_ollama_timeout_must_be_positive(value):
     with pytest.raises(ValueError, match="ollama_timeout_s must be > 0"):
         RunnerConfig.from_dict({"validator_model": "val", "ollama_timeout_s": value})
 
+
 def test_parallel_decompose_rejected():
     with pytest.raises(ValueError):
         RunnerConfig.from_dict(
