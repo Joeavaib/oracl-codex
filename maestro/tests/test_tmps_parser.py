@@ -41,6 +41,7 @@ def test_enforces_b_count():
         "C A|1|2|*",
     ])
     with pytest.raises(ParseError):
+
         parse_tmps(raw)
 
 
@@ -79,3 +80,6 @@ def test_rejects_invalid_agent_code_and_priority_range():
     ])
     with pytest.raises(ParseError, match="B pri range"):
         parse_tmps(bad_pri)
+
+        parse_tmps(raw)
+

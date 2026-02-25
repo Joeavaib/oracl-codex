@@ -94,6 +94,7 @@ def test_orchestrator_validator_passes_deterministic_options(tmp_path: Path):
     opts = validator.calls[0]["options"]
     assert opts["temperature"] == 0.0
     assert opts["top_p"] == 1.0
+
     assert opts["num_predict"] == 512
     assert opts["seed"] == 42
 
@@ -105,10 +106,23 @@ def test_tmps_repair_loop_uses_error_reason_for_parse_and_semantics(tmp_path: Pa
     semantically_invalid = VALID_TMPS.replace("C A|1|0|*", "C A|1|1|*")
     validator = RecordingValidator(["bad", semantically_invalid, VALID_TMPS])
 
+    assert opts["do_sample"] is False
+
+
+def test_tmps_repair_loop_uses_error_reason(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cfg = _build_cfg()
+    validator = RecordingValidator(["bad", VALID_TMPS])
+
+
     Orchestrator(cfg, SpecialistMock(), validator_client=validator).run(repo, "implement x")
 
     assert "[INVALID_TMP-S] reason=" in validator.calls[1]["prompt"]
+
     assert "[INVALID_TMP-S] reason=" in validator.calls[2]["prompt"]
+
+
 
 
 def test_strict_mode_rejects_normalization_changes(tmp_path: Path):
@@ -119,6 +133,7 @@ def test_strict_mode_rejects_normalization_changes(tmp_path: Path):
     tmps_needs_normalization = "\n".join(
         [
             "V 2.4|s|r|0",
+
             "A 1011|9999|H|bad",
             "B 1:imp|do",
             "B 2:tst|do",
@@ -127,6 +142,17 @@ def test_strict_mode_rejects_normalization_changes(tmp_path: Path):
         ]
     )
     validator = RecordingValidator([tmps_needs_normalization, VALID_TMPS])
+
+            "A 1100|9999|F|bad",
+            "B 1:imp|do",
+            "B 2:tst|do",
+            "B 3:doc|do",
+            "C A|1|5|*",
+        ]
+    )
+    strict_valid = VALID_TMPS.replace("C A|1|0|*", "C A|1|1|*")
+    validator = RecordingValidator([tmps_needs_normalization, strict_valid])
+
 
     Orchestrator(cfg, SpecialistMock(), validator_client=validator).run(repo, "implement x")
 

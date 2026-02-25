@@ -17,7 +17,11 @@ from maestro.orch.routing import route_initial_agent
 from maestro.store import RunStore
 from maestro.tmps.normalize import normalize_tmps
 from maestro.tmps.parser import ParseError, parse_tmps
+
 from maestro.tmps.validate import TMPSValidationError, validate_tmps_semantics
+
+from maestro.tmps.validate import validate_tmps_semantics
+
 
 MAX_TMPS_RETRIES = 2
 
@@ -78,6 +82,7 @@ class Orchestrator:
                 self.cfg.validator_input_cap,
             )
             store.write_text(tdir / "validator_input.txt", val_input)
+
             budget_after_turn = max(0, budget - 1)
             raw, parsed = self._validate_tmps_with_retry(
                 val_input,
@@ -90,6 +95,13 @@ class Orchestrator:
 
             parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
             normalized = normalize_tmps(parsed, budget_after_turn)
+
+            raw, parsed = self._validate_tmps_with_retry(val_input, sid=sid, runid=runid, turn=turn)
+            store.write_text(tdir / "tmps_raw.txt", raw)
+
+            parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
+            normalized = normalize_tmps(parsed, budget)
+
             normalized_snapshot = json.dumps(normalized, default=lambda o: o.__dict__, sort_keys=True)
             if self.cfg.strict_mode and normalized_snapshot != parsed_snapshot:
                 strict_reason = "strict_mode: normalization changed TMP-S record"
@@ -99,11 +111,18 @@ class Orchestrator:
                     runid=runid,
                     turn=turn,
                     initial_reason=strict_reason,
+
                     budget_after_turn=budget_after_turn,
                 )
                 store.write_text(tdir / "tmps_raw_retry_strict.txt", raw)
                 parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
                 normalized = normalize_tmps(parsed, budget_after_turn)
+
+                )
+                store.write_text(tdir / "tmps_raw_retry_strict.txt", raw)
+                parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
+                normalized = normalize_tmps(parsed, budget)
+
                 normalized_snapshot = json.dumps(normalized, default=lambda o: o.__dict__, sort_keys=True)
                 if normalized_snapshot != parsed_snapshot:
                     raise ParseError(strict_reason)
@@ -146,11 +165,19 @@ class Orchestrator:
             specialist_output = self._call_specialist(agent, specialist_prompt)
 
     def _validator_options(self) -> dict[str, int | float]:
+
         options: dict[str, int | float | bool] = {
             "temperature": 0.0,
             "top_p": 1.0,
             "num_ctx": 4096,
             "num_predict": 512,
+
+        options: dict[str, int | float] = {
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "num_predict": 512,
+            "max_new_tokens": 512,
+
             "do_sample": False,
         }
         if self.cfg.validator_seed is not None:
@@ -163,7 +190,10 @@ class Orchestrator:
         sid: str,
         runid: str,
         turn: int,
+
         budget_after_turn: int,
+
+
         initial_reason: str | None = None,
     ) -> tuple[str, object]:
         prompt = val_input
@@ -180,9 +210,15 @@ class Orchestrator:
             )
             try:
                 parsed = parse_tmps(raw)
+
                 validate_tmps_semantics(parsed, budget_after_turn)
                 return raw, parsed
             except (ParseError, TMPSValidationError) as err:
+
+                validate_tmps_semantics(parsed)
+                return raw, parsed
+            except ParseError as err:
+
                 reason = str(err)
                 if attempt == MAX_TMPS_RETRIES:
                     parsed = synthetic_meta_escalation(sid, runid, turn)
