@@ -9,6 +9,10 @@ class ParseError(ValueError):
     pass
 
 
+_DOTPATH_PATTERN = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_\-*]+)*$")
+_FOCUS_PATTERN = re.compile(r"^(\*|[A-Za-z0-9_]+(?:\.[A-Za-z0-9_\-*]+)*(?:,[A-Za-z0-9_]+(?:\.[A-Za-z0-9_\-*]+)*){0,2})$")
+
+
 def split_with_escape(text: str) -> list[str]:
     out, current = [], []
     esc = False
@@ -34,8 +38,19 @@ def split_with_escape(text: str) -> list[str]:
     return out
 
 
-def parse_tmps(raw: str) -> TMPSRecord:
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+def parse_tmps(raw: str, *, strict: bool = False) -> TMPSRecord:
+    if strict:
+        lines = raw.splitlines()
+        if not lines:
+            raise ParseError("empty")
+        for line in lines:
+            if line == "":
+                raise ParseError("blank line")
+            if line != line.strip():
+                raise ParseError("leading/trailing spaces")
+    else:
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+
     i = 0
     if not lines:
         raise ParseError("empty")
@@ -46,7 +61,11 @@ def parse_tmps(raw: str) -> TMPSRecord:
     vparts = split_with_escape(lines[0][2:])
     if len(vparts) != 4:
         raise ParseError("invalid V")
-    v = VLine(vparts[0], vparts[1], vparts[2], int(vparts[3]))
+    try:
+        vturn = int(vparts[3])
+    except ValueError:
+        raise ParseError("invalid V turn") from None
+    v = VLine(vparts[0], vparts[1], vparts[2], vturn)
     i = 1
 
     if i >= len(lines) or not lines[i].startswith("A "):
@@ -61,6 +80,8 @@ def parse_tmps(raw: str) -> TMPSRecord:
         raise ParseError("soft4")
     if a.verdict not in {"P", "W", "F", "H"}:
         raise ParseError("verdict")
+    if len(a.rationale.split()) > 12:
+        raise ParseError("rationale wordcount")
     i += 1
 
     es: list[ELine] = []
@@ -68,6 +89,10 @@ def parse_tmps(raw: str) -> TMPSRecord:
         eparts = split_with_escape(lines[i][2:])
         if len(eparts) not in {3, 4}:
             raise ParseError("invalid E")
+        if eparts[1] not in {"C", "H", "M", "L"}:
+            raise ParseError("E severity")
+        if not _DOTPATH_PATTERN.fullmatch(eparts[0]):
+            raise ParseError("E dotpath")
         es.append(ELine(eparts[0], eparts[1], eparts[2], eparts[3] if len(eparts) == 4 else None))
         i += 1
 
@@ -80,7 +105,6 @@ def parse_tmps(raw: str) -> TMPSRecord:
         if ":" not in left:
             raise ParseError("invalid B")
         pri_s, agent = left.split(":", 1)
-
         try:
             pri = int(pri_s)
         except ValueError:
@@ -109,11 +133,24 @@ def parse_tmps(raw: str) -> TMPSRecord:
     cparts = split_with_escape(lines[i][2:])
     if len(cparts) != 4:
         raise ParseError("invalid C")
-    c = CLine(cparts[0], int(cparts[1]), int(cparts[2]), cparts[3])
+
+    try:
+        strategy = int(cparts[1])
+        max_retries = int(cparts[2])
+    except ValueError:
+        raise ParseError("invalid C int") from None
+
+    c = CLine(cparts[0], strategy, max_retries, cparts[3])
     if c.decision not in {"A", "R", "X", "E"}:
         raise ParseError("decision")
     if c.strategy not in {0, 1, 2, 3, 4, 5}:
         raise ParseError("strategy")
+    if c.max_retries < 0 or c.max_retries > 9:
+        raise ParseError("max_retries")
+    if not _FOCUS_PATTERN.fullmatch(c.focus):
+        raise ParseError("focus")
+
     if i != len(lines) - 1:
         raise ParseError("trailing lines")
+
     return TMPSRecord(v=v, a=a, e=es, b=bs, c=c)

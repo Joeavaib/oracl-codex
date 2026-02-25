@@ -31,7 +31,8 @@ class RunnerConfig:
     validator_backend: str = "ollama"
     validator_model: str = ""
     validator_adapter_path: str | None = None
-    validator_seed: int | None = 42
+    validator_seed: int | None = None
+    validator_max_new_tokens: int = 512
     strict_mode: bool = False
     max_retries: int = 2
     abs_max_turns: int = 6
@@ -64,13 +65,28 @@ class RunnerConfig:
         if bool(raw.get("parallel_decompose", False)):
             raise ValueError("parallel_decompose is not supported in this build; execution is sequential only")
 
+        validator_backend = raw.get("validator_backend", "ollama")
+        if validator_backend not in {"ollama", "hf"}:
+            raise ValueError("validator_backend must be ollama or hf")
+
+        validator_model = raw.get("validator_model")
+        if not validator_model:
+            raise ValueError("validator_model is required")
+
+        validator_adapter_path = raw.get("validator_adapter_path")
+        if validator_backend == "hf" and not validator_adapter_path:
+            raise ValueError("validator_adapter_path is required when validator_backend=hf")
+
+        validator_max_new_tokens = max(1, min(512, int(raw.get("validator_max_new_tokens", 512))))
+
         cfg = cls(
             ollama_host=raw.get("ollama_host", "http://127.0.0.1:11434"),
             ollama_timeout_s=ollama_timeout_s,
-            validator_backend=raw.get("validator_backend", "ollama"),
-            validator_model=raw["validator_model"],
-            validator_adapter_path=raw.get("validator_adapter_path"),
-            validator_seed=raw.get("validator_seed", 42),
+            validator_backend=validator_backend,
+            validator_model=validator_model,
+            validator_adapter_path=validator_adapter_path,
+            validator_seed=raw.get("validator_seed"),
+            validator_max_new_tokens=validator_max_new_tokens,
             strict_mode=bool(raw.get("strict_mode", False)),
             max_retries=max(0, min(9, int(raw.get("max_retries", 2)))),
             abs_max_turns=int(raw.get("abs_max_turns", 6)),
@@ -85,6 +101,4 @@ class RunnerConfig:
 
         if cfg.execution_mode not in {"sandboxed", "unsafe-local"}:
             raise ValueError("execution_mode must be sandboxed or unsafe-local")
-        if cfg.validator_backend not in {"ollama", "hf"}:
-            raise ValueError("validator_backend must be ollama or hf")
         return cfg

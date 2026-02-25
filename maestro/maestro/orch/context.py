@@ -3,8 +3,27 @@ from __future__ import annotations
 import json
 
 
-def build_validator_input(mode: str, request: str, repo_summary: str, artifact_kind: str, artifact: str, patch_apply: dict, checks: dict, last_tmps: str, cap: int) -> str:
+def build_validator_input(
+    mode: str,
+    request: str,
+    repo_summary: str,
+    artifact_kind: str,
+    artifact: str,
+    patch_apply: dict,
+    checks: dict,
+    last_tmps: str,
+    cap: int,
+    *,
+    sid: str,
+    runid: str,
+    turn: int,
+    budget_after_turn: int,
+) -> str:
     payload = (
+        f"[SID] {sid}\n"
+        f"[RUNID] {runid}\n"
+        f"[TURN] {turn}\n"
+        f"[BUDGET_AFTER_TURN] {budget_after_turn}\n"
         f"[MODE] {mode}\n"
         f"[REQUEST] {request}\n"
         f"[REPO_SUMMARY] {repo_summary}\n"
