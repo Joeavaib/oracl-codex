@@ -17,11 +17,7 @@ from maestro.orch.routing import route_initial_agent
 from maestro.store import RunStore
 from maestro.tmps.normalize import normalize_tmps
 from maestro.tmps.parser import ParseError, parse_tmps
-
 from maestro.tmps.validate import TMPSValidationError, validate_tmps_semantics
-
-from maestro.tmps.validate import validate_tmps_semantics
-
 
 MAX_TMPS_RETRIES = 2
 
@@ -52,6 +48,9 @@ class Orchestrator:
         specialist_output = self._call_specialist(agent, specialist_prompt)
 
         while True:
+            budget_before_turn = budget
+            budget_after_turn = max(budget_before_turn - 1, 0)
+
             tdir = logger.turn_dir(turn)
             store.write_text(tdir / "specialist_agent.txt", agent)
             store.write_text(tdir / "specialist_prompt.txt", specialist_prompt)
@@ -80,10 +79,13 @@ class Orchestrator:
                 checks,
                 last_tmps_raw,
                 self.cfg.validator_input_cap,
+                sid=sid,
+                runid=runid,
+                turn=turn,
+                budget_after_turn=budget_after_turn,
             )
             store.write_text(tdir / "validator_input.txt", val_input)
 
-            budget_after_turn = max(0, budget - 1)
             raw, parsed = self._validate_tmps_with_retry(
                 val_input,
                 sid=sid,
@@ -95,14 +97,8 @@ class Orchestrator:
 
             parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
             normalized = normalize_tmps(parsed, budget_after_turn)
-
-            raw, parsed = self._validate_tmps_with_retry(val_input, sid=sid, runid=runid, turn=turn)
-            store.write_text(tdir / "tmps_raw.txt", raw)
-
-            parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
-            normalized = normalize_tmps(parsed, budget)
-
             normalized_snapshot = json.dumps(normalized, default=lambda o: o.__dict__, sort_keys=True)
+
             if self.cfg.strict_mode and normalized_snapshot != parsed_snapshot:
                 strict_reason = "strict_mode: normalization changed TMP-S record"
                 raw, parsed = self._validate_tmps_with_retry(
@@ -110,19 +106,12 @@ class Orchestrator:
                     sid=sid,
                     runid=runid,
                     turn=turn,
-                    initial_reason=strict_reason,
-
                     budget_after_turn=budget_after_turn,
+                    initial_reason=strict_reason,
                 )
                 store.write_text(tdir / "tmps_raw_retry_strict.txt", raw)
                 parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
                 normalized = normalize_tmps(parsed, budget_after_turn)
-
-                )
-                store.write_text(tdir / "tmps_raw_retry_strict.txt", raw)
-                parsed_snapshot = json.dumps(parsed, default=lambda o: o.__dict__, sort_keys=True)
-                normalized = normalize_tmps(parsed, budget)
-
                 normalized_snapshot = json.dumps(normalized, default=lambda o: o.__dict__, sort_keys=True)
                 if normalized_snapshot != parsed_snapshot:
                     raise ParseError(strict_reason)
@@ -137,10 +126,13 @@ class Orchestrator:
             store.write_text(final_dir / "decision.txt", decision)
 
             if decision == "A":
-                diff = subprocess.run(["git", "diff", "--no-index", str(repo), str(work_repo)], capture_output=True, text=True).stdout
+                diff = subprocess.run(
+                    ["git", "diff", "--no-index", str(repo), str(work_repo)], capture_output=True, text=True
+                ).stdout
                 store.write_text(final_dir / "final_patch.diff", diff)
                 store.write_text(final_dir / "final_summary.md", f"Accepted on turn {turn}. checks={checks['summary']}\n")
                 return {"decision": "A", "run_root": str(run_root)}
+
             if decision == "E" or abs_remaining <= 0:
                 esc = final_dir / "escalation_bundle"
                 esc.mkdir(parents=True, exist_ok=True)
@@ -151,34 +143,25 @@ class Orchestrator:
                 store.write_json(esc / "checks.json", checks)
                 return {"decision": "E", "run_root": str(run_root)}
 
-            if budget == 0:
-                decision = "E"
-                continue
+            if decision in {"R", "X"}:
+                budget = budget_after_turn
+
             agent = normalized.b[0].agent
             task = normalized.b[0].action
             focus = normalized.c.focus
             delta = extract_delta(focus, artifact.payload, checks["summary"])
             specialist_prompt = build_specialist_prompt(normalized.c.strategy, agent, request_text, raw, delta, task)
-            budget -= 1
             turn += 1
             abs_remaining -= 1
             specialist_output = self._call_specialist(agent, specialist_prompt)
 
-    def _validator_options(self) -> dict[str, int | float]:
-
+    def _validator_options(self) -> dict[str, int | float | bool]:
         options: dict[str, int | float | bool] = {
             "temperature": 0.0,
             "top_p": 1.0,
-            "num_ctx": 4096,
-            "num_predict": 512,
-
-        options: dict[str, int | float] = {
-            "temperature": 0.0,
-            "top_p": 1.0,
-            "num_predict": 512,
-            "max_new_tokens": 512,
-
             "do_sample": False,
+            "num_predict": self.cfg.validator_max_new_tokens,
+            "max_new_tokens": self.cfg.validator_max_new_tokens,
         }
         if self.cfg.validator_seed is not None:
             options["seed"] = int(self.cfg.validator_seed)
@@ -187,18 +170,17 @@ class Orchestrator:
     def _validate_tmps_with_retry(
         self,
         val_input: str,
+        *,
         sid: str,
         runid: str,
         turn: int,
-
         budget_after_turn: int,
-
-
         initial_reason: str | None = None,
     ) -> tuple[str, object]:
-        prompt = val_input
         reason = initial_reason
+
         for attempt in range(MAX_TMPS_RETRIES + 1):
+            prompt = val_input
             if reason:
                 prompt = f"{val_input}\n[INVALID_TMP-S] reason={reason} regenerate strictly valid TMP-S only"
 
@@ -208,17 +190,12 @@ class Orchestrator:
                 options=self._validator_options(),
                 system=VALIDATOR_SYSTEM_PROMPT,
             )
-            try:
-                parsed = parse_tmps(raw)
 
-                validate_tmps_semantics(parsed, budget_after_turn)
+            try:
+                parsed = parse_tmps(raw, strict=True)
+                validate_tmps_semantics(parsed, expected_budget_after_turn=budget_after_turn)
                 return raw, parsed
             except (ParseError, TMPSValidationError) as err:
-
-                validate_tmps_semantics(parsed)
-                return raw, parsed
-            except ParseError as err:
-
                 reason = str(err)
                 if attempt == MAX_TMPS_RETRIES:
                     parsed = synthetic_meta_escalation(sid, runid, turn)

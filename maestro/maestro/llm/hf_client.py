@@ -22,6 +22,9 @@ class HFClient:
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+
             base_model = AutoModelForCausalLM.from_pretrained(
                 model,
                 torch_dtype=torch.float16,
@@ -29,17 +32,16 @@ class HFClient:
                 trust_remote_code=True,
                 attn_implementation="eager",
             )
-            if self.adapter_path:
-                loaded_model = PeftModel.from_pretrained(base_model, self.adapter_path)
-            else:
-                loaded_model = base_model
+            loaded_model = PeftModel.from_pretrained(base_model, self.adapter_path) if self.adapter_path else base_model
+            loaded_model.eval()
+
             self._MODEL_CACHE[cache_key] = (tokenizer, loaded_model)
             return tokenizer, loaded_model
 
     @staticmethod
     def _build_prompt(prompt: str, system: str | None = None) -> str:
         if system:
-            return f"{system.strip()}\n\n{prompt.strip()}"
+            return f"{system}\n\n{prompt}"
         return prompt
 
     def generate(self, model: str, prompt: str, options: dict | None = None, system: str | None = None) -> str:
@@ -47,11 +49,15 @@ class HFClient:
         opts = dict(options or {})
         seed = opts.pop("seed", None)
         max_new_tokens = int(opts.pop("max_new_tokens", opts.pop("num_predict", 512)))
+        max_new_tokens = max(1, min(512, max_new_tokens))
         temperature = float(opts.pop("temperature", 0.0))
         top_p = float(opts.pop("top_p", 1.0))
         do_sample = bool(opts.pop("do_sample", False))
 
         full_prompt = self._build_prompt(prompt, system)
+
+        import torch
+
         try:
             inputs = tokenizer.apply_chat_template(
                 [
@@ -69,16 +75,15 @@ class HFClient:
             inputs = inputs.to(model_device)
 
         if seed is not None:
-            import torch
-
             torch.manual_seed(int(seed))
 
-        outputs = loaded_model.generate(
-            inputs,
-            do_sample=do_sample,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-        )
+        with torch.inference_mode():
+            outputs = loaded_model.generate(
+                inputs,
+                do_sample=do_sample,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
         generated = outputs[0][inputs.shape[-1] :]
-        return tokenizer.decode(generated, skip_special_tokens=True).strip()
+        return tokenizer.decode(generated, skip_special_tokens=True)

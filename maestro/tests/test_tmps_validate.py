@@ -4,42 +4,36 @@ from maestro.tmps.parser import parse_tmps
 from maestro.tmps.validate import TMPSValidationError, validate_tmps_semantics
 
 
-def test_validate_tmps_semantics_accepts_valid_record():
-    raw = "\n".join([
+VALID_RECORD = "\n".join(
+    [
         "V 2.4|sid|run|1",
         "A 1111|6655|W|good enough",
         "B 1:imp|do one",
         "B 2:tst|do two",
         "B 3:doc|do three",
         "C A|1|0|*",
-    ])
-    rec = parse_tmps(raw)
-    validate_tmps_semantics(rec, budget_after_turn=0)
+    ]
+)
 
 
-def test_validate_tmps_semantics_rejects_wrong_verdict_and_decision():
-    raw = "\n".join([
-        "V 2.4|sid|run|1",
-        "A 1111|9999|F|bad verdict",
-        "B 1:imp|do one",
-        "B 2:tst|do two",
-        "B 3:doc|do three",
-        "C R|1|0|*",
-    ])
-    rec = parse_tmps(raw)
+def test_validate_tmps_semantics_accepts_valid_record():
+    rec = parse_tmps(VALID_RECORD, strict=True)
+    validate_tmps_semantics(rec, expected_budget_after_turn=0)
+
+
+def test_tmps_semantics_verdict_derivation():
+    rec = parse_tmps(VALID_RECORD.replace("A 1111|6655|W|", "A 1111|6655|F|"), strict=True)
     with pytest.raises(TMPSValidationError, match="verdict mismatch"):
-        validate_tmps_semantics(rec, budget_after_turn=0)
+        validate_tmps_semantics(rec)
 
 
 def test_validate_tmps_semantics_rejects_max_retries_mismatch():
-    raw = "\n".join([
-        "V 2.4|sid|run|1",
-        "A 1111|9999|P|good",
-        "B 1:imp|do one",
-        "B 2:tst|do two",
-        "B 3:doc|do three",
-        "C A|1|2|*",
-    ])
-    rec = parse_tmps(raw)
+    rec = parse_tmps(VALID_RECORD.replace("C A|1|0|*", "C A|1|2|*"), strict=True)
     with pytest.raises(TMPSValidationError, match="max_retries mismatch"):
-        validate_tmps_semantics(rec, budget_after_turn=0)
+        validate_tmps_semantics(rec, expected_budget_after_turn=0)
+
+
+def test_validate_tmps_semantics_rejects_decision_for_zero_budget():
+    rec = parse_tmps(VALID_RECORD.replace("A 1111|6655|W|good enough", "A 1011|6655|H|good enough").replace("C A|1|0|*", "C R|1|0|*"), strict=True)
+    with pytest.raises(TMPSValidationError, match="max_retries=0"):
+        validate_tmps_semantics(rec)
